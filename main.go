@@ -4,6 +4,7 @@ import (
 	"embed"
 	_ "embed"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -29,11 +30,27 @@ func main() {
 	log.Printf("loaded %d urls", len(urls))
 
 	addr := fmt.Sprintf(":%d", port)
-	handler := sloghttp.Recovery(sloghttp.New(logger)(http.HandlerFunc(resolve)))
+
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /status", status)
+	mux.HandleFunc("GET /", resolve)
+
+	handler := sloghttp.Recovery(sloghttp.New(logger)(mux))
 
 	log.Printf("server listening at %s", addr)
 
 	http.ListenAndServe(addr, handler)
+}
+
+func status(w http.ResponseWriter, r *http.Request) {
+	j, _ := json.Marshal(struct {
+		Status string `json:"status"`
+	}{
+		Status: "up",
+	})
+	w.Header().Add("Content-Type", "application/json")
+	w.Write(j)
 }
 
 func resolve(w http.ResponseWriter, r *http.Request) {
