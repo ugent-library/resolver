@@ -3,7 +3,6 @@ package main
 import (
 	"compress/gzip"
 	"embed"
-	_ "embed"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
