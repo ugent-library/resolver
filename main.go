@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"embed"
 	_ "embed"
 	"encoding/csv"
@@ -15,7 +16,7 @@ import (
 	sloghttp "github.com/samber/slog-http"
 )
 
-//go:embed urls.csv
+//go:embed urls.csv.gz
 var fs embed.FS
 var urls = make(map[string]string)
 var logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -63,14 +64,19 @@ func resolve(w http.ResponseWriter, r *http.Request) {
 }
 
 func loadURLS() error {
-	f, err := fs.Open("urls.csv")
+	f, err := fs.Open("urls.csv.gz")
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	r := csv.NewReader(f)
+	gzipReader, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer gzipReader.Close()
+	csvReader := csv.NewReader(gzipReader)
 	for {
-		row, err := r.Read()
+		row, err := csvReader.Read()
 		if err == io.EOF {
 			break
 		}
