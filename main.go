@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -27,7 +26,7 @@ func main() {
 		panic(err)
 	}
 
-	log.Printf("loaded %d urls", len(urls))
+	logger.Info(fmt.Sprintf("loaded %d urls", len(urls)))
 
 	addr := fmt.Sprintf(":%d", port)
 
@@ -38,7 +37,7 @@ func main() {
 
 	handler := sloghttp.Recovery(sloghttp.New(logger)(mux))
 
-	log.Printf("server listening at %s", addr)
+	logger.Info("server listening", "port", port)
 
 	http.ListenAndServe(addr, handler)
 }
