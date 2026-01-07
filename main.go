@@ -33,8 +33,8 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /status", status)
-	mux.HandleFunc("GET /", resolve)
+	mux.HandleFunc("GET /status", statusHandler)
+	mux.HandleFunc("GET /", resolveHandler)
 
 	handler := sloghttp.Recovery(sloghttp.New(logger)(mux))
 
@@ -43,7 +43,7 @@ func main() {
 	http.ListenAndServe(addr, handler)
 }
 
-func status(w http.ResponseWriter, r *http.Request) {
+func statusHandler(w http.ResponseWriter, r *http.Request) {
 	j, _ := json.Marshal(struct {
 		Status string `json:"status"`
 	}{
@@ -53,7 +53,7 @@ func status(w http.ResponseWriter, r *http.Request) {
 	w.Write(j)
 }
 
-func resolve(w http.ResponseWriter, r *http.Request) {
+func resolveHandler(w http.ResponseWriter, r *http.Request) {
 	src := r.URL.Query().Get("url")
 	if dst, ok := urls[src]; ok {
 		http.Redirect(w, r, dst, http.StatusMovedPermanently)
