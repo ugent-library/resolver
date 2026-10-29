@@ -1,6 +1,6 @@
 # Plan: rebuild the container image with current Go and CA certificates
 
-**Status:** copied from ingest's archived plan (`ingest/docs/archive/docker-image-build.md`) on 2026-10-26. Part A not started.
+**Status:** copied from ingest's archived plan (`ingest/docs/archive/docker-image-build.md`) on 2026-10-26. Part A in progress on branch `docker-image-build`: A0 to A4 and the local test A4b done (2026-10-29, committed as one commit). A5 is skipped; next is A6.
 
 ## Reusing this plan in another project
 
@@ -28,7 +28,7 @@ There is no need to repeat the test in *What we tested*: it shows how Go's `cryp
 | Branches | only `main` |
 | Merge commit message | *to decide*; the history has no merge commits yet |
 | Releases | none; no git tags |
-| Docker Hub build rules | *to look up* (which tag `main` builds, which tag development and production run) |
+| Docker Hub build rules | one rule: branch `main` → tag `latest` (looked up 2026-10-29). No branch or tag rules otherwise, so a push to any other branch builds nothing. There is no development environment; production runs `latest` |
 
 The Dockerfile declares `ARG SOURCE_BRANCH`, `SOURCE_COMMIT` and `IMAGE_NAME` and copies them into `ENV`, and the existing `hooks/build` fills them in. No code in resolver reads them; they only tell someone inspecting a container which commit it runs.
 
@@ -80,8 +80,8 @@ We take both fixes, so that a later mistake in one (a stale bundle, a toolchain 
 ## Open questions
 
 - **Periodic rebuilds.** Docker Hub builds only on a push or a manual trigger. `SNAPSHOT_EPOCH` makes a build that runs pick up new packages; it does not make a build happen. If a project goes months without a push, its image keeps an old Go and an old bundle. Decide how rebuilds happen between code changes: by hand after each Go point release and Alpine security update, or on a schedule from outside Docker Hub. Check what Docker Hub currently offers for triggering builds before choosing. *Ingest chose by hand. Resolver: open.*
-- **Raise the `go` directive in go.mod?** Raising it to `go 1.27.3` makes a build on an older toolchain fail outright, because the official golang images set `GOTOOLCHAIN=local`. It also forces every developer onto 1.27.3 (Go downloads it automatically unless `GOTOOLCHAIN=local` is set locally). Pinning the image tag already fixes the Docker build; this would add a check that stops a stale toolchain anywhere. *Ingest raised it. Resolver: open. Going from 1.24.4 to 1.27.3 skips three minor releases, so also run `go get -u ./...` and `go mod tidy` and check that the dependencies still build.*
-- **Docker Hub "Build caching" setting.** Look up whether it is on for the repository (Builds, Configure automated builds). If it is off, every build already starts from scratch and the EPOCH argument only matters if caching is turned on later. Keep the argument either way, so the Dockerfile does not depend on that setting. *Resolver: to look up.*
+- **Raise the `go` directive in go.mod?** Raising it to `go 1.27.3` makes a build on an older toolchain fail outright, because the official golang images set `GOTOOLCHAIN=local`. It also forces every developer onto 1.27.3 (Go downloads it automatically unless `GOTOOLCHAIN=local` is set locally). Pinning the image tag already fixes the Docker build; this would add a check that stops a stale toolchain anywhere. *Ingest raised it. Resolver: raised to `go 1.27.3` (2026-10-29), together with `go get -u ./...` and `go mod tidy`: `slog-http` 1.7.0 → 1.12.1, OpenTelemetry 1.29 → 1.47, `xxhash/v2` added as indirect. Checked before applying, by building and running the old and the new version side by side: same URL count (8,357,913), same `301`/`404`/`/status` responses, same startup time and memory (about 2.4 GB). The only visible difference is that `ip` and `referer` swap places inside `request` in the request log lines. Of the GODEBUG defaults the new directive switches on, only `containermaxprocs`/`updatemaxprocs` matters: `GOMAXPROCS` now follows a hard CPU limit on the container, if the Nomad job sets one.*
+- **Docker Hub "Build caching" setting.** Look up whether it is on for the repository (Builds, Configure automated builds). If it is off, every build already starts from scratch and the EPOCH argument only matters if caching is turned on later. Keep the argument either way, so the Dockerfile does not depend on that setting. *Resolver: on (2026-10-29), so the EPOCH argument is what keeps the packages current.*
 
 ## Part A: pick up both fixes
 
@@ -89,19 +89,19 @@ The fix branches from `main`, not `dev`, so that releasing it does not also rele
 
 ### A0. Branch
 
-- [ ] Switch to `main` and bring it up to date: `git switch main && git pull --ff-only`.
-- [ ] Create the feature branch: `git switch -c docker-image-build`. Steps A1 to A3 are commits on this branch.
+- [x] Switch to `main` and bring it up to date: `git switch main && git pull --ff-only`.
+- [x] Create the feature branch: `git switch -c docker-image-build`. Steps A1 to A3 are commits on this branch.
 
 ### A1. Go
 
-- [ ] Change the build stage to `FROM golang:1.27.3-alpine`.
-- [ ] Decide the go.mod question above; if yes, change the `go` directive to `1.27.3` in the same commit.
-- [ ] Build locally with `docker build --pull` and check which toolchain built the binary: copy it out with `docker create` and `docker cp <container>:<binary> ./app`, where `<binary>` is the path from *This project*, then run `go version ./app` on the host. It must print `go1.27.3`.
+- [x] Change the build stage to `FROM golang:1.27.3-alpine`.
+- [x] Decide the go.mod question above; if yes, change the `go` directive to `1.27.3` in the same commit.
+- [x] Build locally with `docker build --pull` and check which toolchain built the binary: copy it out with `docker create` and `docker cp <container>:<binary> ./app`, where `<binary>` is the path from *This project*, then run `go version ./app` on the host. It must print `go1.27.3`.
 
 ### A2. CA bundle, kept current
 
-- [ ] Change the final stage to `FROM alpine:3.24`, the release `alpine:latest` points to today. Pinning it makes moving to a new Alpine release a deliberate change rather than something a rebuild does unnoticed.
-- [ ] Right after that `FROM`, add the argument and the upgrade. The `ARG` must sit inside the final stage; one declared before the first `FROM` is not visible there. Upgrade all packages rather than naming one: the base image ships `ca-certificates-bundle`, not `ca-certificates`, so `apk upgrade ca-certificates` would change nothing, and the other packages get their security fixes too.
+- [x] Change the final stage to `FROM alpine:3.24`, the release `alpine:latest` points to today. Pinning it makes moving to a new Alpine release a deliberate change rather than something a rebuild does unnoticed.
+- [x] Right after that `FROM`, add the argument and the upgrade. The `ARG` must sit inside the final stage; one declared before the first `FROM` is not visible there. Upgrade all packages rather than naming one: the base image ships `ca-certificates-bundle`, not `ca-certificates`, so `apk upgrade ca-certificates` would change nothing, and the other packages get their security fixes too.
 
   ```dockerfile
   FROM alpine:3.24
@@ -110,11 +110,11 @@ The fix branches from `main`, not `dev`, so that releasing it does not also rele
   RUN apk upgrade --no-cache
   ```
 
-- [ ] Check the result: `docker run --rm --entrypoint apk <image> list -I ca-certificates-bundle` shows `ca-certificates-bundle-20261020-r0` or later. Grepping the bundle for "emSign" proves nothing: `/etc/ssl/certs/ca-certificates.crt` holds PEM blocks only, without the root names, so the count is always 0.
+- [x] Check the result: `docker run --rm --entrypoint apk <image> list -I ca-certificates-bundle` shows `ca-certificates-bundle-20261020-r0` or later. Grepping the bundle for "emSign" proves nothing: `/etc/ssl/certs/ca-certificates.crt` holds PEM blocks only, without the root names, so the count is always 0. *Resolver (2026-10-29): `ca-certificates-bundle-20261020-r0` on Alpine 3.24.3. Locally, the `apk upgrade` step showed `CACHED` when `SNAPSHOT_EPOCH` was unchanged and ran again with a new value. The image still logs `loaded 8357913 urls` and answers `/status`.*
 
 ### A3. Docker Hub build hook
 
-- [ ] Add `hooks/build`, modelled on depot-management's. It fills in `SOURCE_BRANCH` and `SOURCE_COMMIT` from git when Docker Hub leaves them empty. Leave out the `--build-arg` lines for arguments the Dockerfile does not declare.
+- [x] Add `hooks/build`, modelled on depot-management's. *Resolver: the hook already existed, so only `--pull` and `--build-arg SNAPSHOT_EPOCH="$(date +%s)"` were added.* It fills in `SOURCE_BRANCH` and `SOURCE_COMMIT` from git when Docker Hub leaves them empty. Leave out the `--build-arg` lines for arguments the Dockerfile does not declare.
 
   ```bash
   #!/bin/bash
@@ -139,16 +139,29 @@ The fix branches from `main`, not `dev`, so that releasing it does not also rele
       -t $IMAGE_NAME .
   ```
 
-- [ ] Make it executable (`chmod +x hooks/build`) and commit the mode.
-- [ ] Run the hook locally with `DOCKERFILE_PATH=Dockerfile IMAGE_NAME=<project>:local hooks/build` to check it works outside Docker Hub.
-- [ ] Look up the Docker Hub "Build caching" setting and record the answer in this plan.
+- [x] Make it executable (`chmod +x hooks/build`) and commit the mode. *Resolver: it was `100644` in git until now; the mode change goes into the A3 commit.*
+- [x] Run the hook locally with `DOCKERFILE_PATH=Dockerfile IMAGE_NAME=<project>:local hooks/build` to check it works outside Docker Hub. *Resolver (2026-10-29): it prints the three values, pulls both base images, runs `apk upgrade` on every run (not `CACHED`), and the image's `env` shows `SOURCE_BRANCH` and `SOURCE_COMMIT`.*
+- [x] Look up the Docker Hub "Build caching" setting and record the answer in this plan. *Resolver: on (2026-10-29). Leave it on: `SNAPSHOT_EPOCH` still forces the `apk upgrade` layer to run, and the second build in A5 is needed.*
 
 ### A4. Check locally
 
-- [ ] Run the build and test commands from *This project* with the Go 1.27.3 toolchain.
-- [ ] Look up the Docker Hub build rules and record them in *This project*. Steps A5 and A6 depend on them.
+- [x] Run the build and test commands from *This project* with the Go 1.27.3 toolchain. *Resolver (2026-10-29): `go build` and `go vet ./...` pass, `go mod verify` reports all modules verified, `gofmt -l .` is clean. There are no tests; the load check in Part B and the side-by-side run under the go.mod question cover the behaviour.*
+- [x] Look up the Docker Hub build rules and record them in *This project*. Steps A5 and A6 depend on them. *Resolver: only `main` → `latest`, and no development environment. So A5 becomes a local test (below), and pushing `main` rebuilds the image production runs.*
+
+### A4b. Test the image locally (resolver, instead of A5)
+
+Resolver has no `dev` branch, no development environment and no Docker Hub rule for other branches, so the image is tested on a developer machine before merging. Build it with the hook, so it is built the way Docker Hub will build it, run it, and test it with curl.
+
+- [x] Build with `DOCKERFILE_PATH=Dockerfile IMAGE_NAME=resolver:local hooks/build` and start it with `docker run --rm -d --name resolver-check -p 3000:3000 resolver:local`.
+- [x] Inside the container, run the check from A5: it must print `go1.27.3` and `ca-certificates-bundle-20261020-r0` or later. Check that `env` shows `SOURCE_BRANCH` and `SOURCE_COMMIT`.
+- [x] Run the load check from Part B: the startup log shows `loaded N urls` with N the number of distinct sources, the last row of the file redirects to its destination, an unknown URL gives `404`, `/status` gives `{"status":"up"}`.
+- [x] Check a larger sample: pick random sources, and some that occur more than once in the file, look up the destination of their *last* occurrence, and check that each one redirects there.
+
+*Resolver (2026-10-29), image built from the working tree on top of `eb6c383`: `go1.27.3`, `ca-certificates-bundle-20261020-r0`, Alpine 3.24.3, `SOURCE_*` set. Startup log `loaded 8357913 urls`, matching the distinct count. 616 sources tested (516 random, 100 duplicated): 616 redirected to the expected destination, 0 failures. The last row redirects correctly, an unknown URL and a request without `url` give `404`, `/status` gives `200` with `application/json`, `POST /` gives `405` as before. No errors or panics in the log. Memory about 2.1 GB.*
 
 ### A5. Merge into dev and test there
+
+*Resolver: skip this step; A4b replaces it.*
 
 - [ ] Merge the feature branch into `dev` with a merge commit: `git switch dev && git pull --ff-only && git merge --no-ff docker-image-build`, with the merge commit message from *This project*.
 - [ ] Push `dev`. Docker Hub builds from what is pushed, so the development environment can only be tested after this push.
@@ -168,7 +181,7 @@ The fix branches from `main`, not `dev`, so that releasing it does not also rele
 
 - [ ] Merge the feature branch into `main` with a merge commit: `git switch main && git pull --ff-only && git merge --no-ff docker-image-build`, with the merge commit message from *This project*. Merge the feature branch, not `dev`, so nothing else from `dev` comes along.
 - [ ] Push `main`.
-- [ ] Decide whether a release is needed. It is if production runs an image built from a tag: a new tag is then the only way to get the new Dockerfile into production, because rebuilding the old tag rebuilds the old Dockerfile. If production runs the image built from `main`, the push is enough. *Resolver has no tags yet; check what production runs.*
+- [ ] Decide whether a release is needed. It is if production runs an image built from a tag: a new tag is then the only way to get the new Dockerfile into production, because rebuilding the old tag rebuilds the old Dockerfile. If production runs the image built from `main`, the push is enough. *Resolver: no release needed. Production runs `latest`, which Docker Hub builds from `main`, so the push is enough.*
 - [ ] If a release is needed: create the next patch version as an annotated tag on the merge commit on `main` (resolver has no tags yet, so `v0.1.0` or `v1.0.0`), push the tag, and write a GitHub release that says the image is rebuilt with Go 1.27.3 and the updated CA bundle to move off unsupported Go 1.24 and pick up current Alpine packages, with no other changes and no upgrade steps.
 - [ ] Deploy to production and run the same check in every running allocation as in A5.
 - [ ] Delete the feature branch, locally and on GitHub if it was pushed.
