@@ -1,6 +1,6 @@
 # Plan: rebuild the container image with current Go and CA certificates
 
-**Status:** copied from ingest's archived plan (`ingest/docs/archive/docker-image-build.md`) on 2026-10-26. Part A in progress on branch `docker-image-build`: A0 to A4 and the local test A4b done (2026-10-29, committed as one commit). A5 is skipped. A6: merged into `main` as `c66963c`, no release; pushed. Waiting for the automatic production deploy and its checks.
+**Status:** archived 2026-10-29. Copied from ingest's archived plan (`ingest/docs/archive/docker-image-build.md`) on 2026-10-26. Part A done: merged into `main` as `c66963c`, no release, deployed to production and checked there on 2026-10-29. Part B and the open items (periodic rebuilds, documenting the image build) moved to `docs/plans/docker-image-slim.md`.
 
 ## Reusing this plan in another project
 
@@ -79,7 +79,7 @@ We take both fixes, so that a later mistake in one (a stale bundle, a toolchain 
 
 ## Open questions
 
-- **Periodic rebuilds.** Docker Hub builds only on a push or a manual trigger. `SNAPSHOT_EPOCH` makes a build that runs pick up new packages; it does not make a build happen. If a project goes months without a push, its image keeps an old Go and an old bundle. Decide how rebuilds happen between code changes: by hand after each Go point release and Alpine security update, or on a schedule from outside Docker Hub. Check what Docker Hub currently offers for triggering builds before choosing. *Ingest chose by hand. Resolver: open.*
+- **Periodic rebuilds.** Docker Hub builds only on a push or a manual trigger. `SNAPSHOT_EPOCH` makes a build that runs pick up new packages; it does not make a build happen. If a project goes months without a push, its image keeps an old Go and an old bundle. Decide how rebuilds happen between code changes: by hand after each Go point release and Alpine security update, or on a schedule from outside Docker Hub. Check what Docker Hub currently offers for triggering builds before choosing. *Ingest chose by hand. Resolver: moved to `docs/plans/docker-image-slim.md`.*
 - **Raise the `go` directive in go.mod?** Raising it to `go 1.27.3` makes a build on an older toolchain fail outright, because the official golang images set `GOTOOLCHAIN=local`. It also forces every developer onto 1.27.3 (Go downloads it automatically unless `GOTOOLCHAIN=local` is set locally). Pinning the image tag already fixes the Docker build; this would add a check that stops a stale toolchain anywhere. *Ingest raised it. Resolver: raised to `go 1.27.3` (2026-10-29), together with `go get -u ./...` and `go mod tidy`: `slog-http` 1.7.0 → 1.12.1, OpenTelemetry 1.29 → 1.47, `xxhash/v2` added as indirect. Checked before applying, by building and running the old and the new version side by side: same URL count (8,357,913), same `301`/`404`/`/status` responses, same startup time and memory (about 2.4 GB). The only visible difference is that `ip` and `referer` swap places inside `request` in the request log lines. Of the GODEBUG defaults the new directive switches on, only `containermaxprocs`/`updatemaxprocs` matters: `GOMAXPROCS` now follows a hard CPU limit on the container, if the Nomad job sets one.*
 - **Docker Hub "Build caching" setting.** Look up whether it is on for the repository (Builds, Configure automated builds). If it is off, every build already starts from scratch and the EPOCH argument only matters if caching is turned on later. Keep the argument either way, so the Dockerfile does not depend on that setting. *Resolver: on (2026-10-29), so the EPOCH argument is what keeps the packages current.*
 
@@ -154,7 +154,7 @@ Resolver has no `dev` branch, no development environment and no Docker Hub rule 
 
 - [x] Build with `DOCKERFILE_PATH=Dockerfile IMAGE_NAME=resolver:local hooks/build` and start it with `docker run --rm -d --name resolver-check -p 3000:3000 resolver:local`.
 - [x] Inside the container, run the check from A5: it must print `go1.27.3` and `ca-certificates-bundle-20261020-r0` or later. Check that `env` shows `SOURCE_BRANCH` and `SOURCE_COMMIT`.
-- [x] Run the load check from Part B: the startup log shows `loaded N urls` with N the number of distinct sources, the last row of the file redirects to its destination, an unknown URL gives `404`, `/status` gives `{"status":"up"}`.
+- [x] Run the load check from Part B (now in `docs/plans/docker-image-slim.md`): the startup log shows `loaded N urls` with N the number of distinct sources, the last row of the file redirects to its destination, an unknown URL gives `404`, `/status` gives `{"status":"up"}`.
 - [x] Check a larger sample: pick random sources, and some that occur more than once in the file, look up the destination of their *last* occurrence, and check that each one redirects there.
 
 *Resolver (2026-10-29), image built from the working tree on top of `eb6c383`: `go1.27.3`, `ca-certificates-bundle-20261020-r0`, Alpine 3.24.3, `SOURCE_*` set. Startup log `loaded 8357913 urls`, matching the distinct count. 616 sources tested (516 random, 100 duplicated): 616 redirected to the expected destination, 0 failures. The last row redirects correctly, an unknown URL and a request without `url` give `404`, `/status` gives `200` with `application/json`, `POST /` gives `405` as before. No errors or panics in the log. Memory about 2.1 GB.*
@@ -183,45 +183,15 @@ Resolver has no `dev` branch, no development environment and no Docker Hub rule 
 - [x] Push `main`. *Resolver: pushed 2026-10-29. Production deploys automatically once Docker Hub has rebuilt `latest`.*
 - [x] Decide whether a release is needed. It is if production runs an image built from a tag: a new tag is then the only way to get the new Dockerfile into production, because rebuilding the old tag rebuilds the old Dockerfile. If production runs the image built from `main`, the push is enough. *Resolver: no release needed. Production runs `latest`, which Docker Hub builds from `main`, so the push is enough.*
 - [x] *Resolver: not needed; no release and no tag created.* If a release is needed: create the next patch version as an annotated tag on the merge commit on `main` (resolver has no tags yet, so `v0.1.0` or `v1.0.0`), push the tag, and write a GitHub release that says the image is rebuilt with Go 1.27.3 and the updated CA bundle to move off unsupported Go 1.24 and pick up current Alpine packages, with no other changes and no upgrade steps.
-- [ ] Deploy to production and run the same check in every running allocation as in A5.
-- [ ] Delete the feature branch, locally and on GitHub if it was pushed.
-- [ ] Decide the periodic rebuild question and record the answer here.
+- [x] Deploy to production and run the same check in every running allocation as in A5. *Resolver (2026-10-29): deployed automatically; production prints `go1.27.3` and `ca-certificates-bundle-20261020-r0 x86_64`.*
+- [x] Delete the feature branch, locally and on GitHub if it was pushed. *Resolver: deleted locally; it was never pushed.*
+- [x] Decide the periodic rebuild question and record the answer here. *Resolver: moved to `docs/plans/docker-image-slim.md`.*
 
 ## Part B: Dockerfile cleanup (resolver only)
 
-None of this is needed for part A. It can ship after it, in its own commits.
-
-- [ ] Drop `RUN go get -d -v ./...` from the build stage. `-d` is deprecated and does nothing in module mode; `go build` downloads the modules itself. To keep a cached dependency layer, use `COPY go.mod go.sum ./` and `RUN go mod download` before `COPY . .`.
-- [ ] Copy only the binary into the final stage: `COPY --from=build /build/app /dist/app`. Today `COPY --from=build /build .` also ships the source, `go.mod`, `hooks/` and `urls.csv.gz`, which the binary already embeds.
-- [ ] Add a `.dockerignore` that leaves out `.git/` and `docs/`.
-- [ ] Run the container as a non-root user (`USER nobody`, or a dedicated user). resolver writes no files and listens on port 3000, above 1024, so nothing should depend on root. Check the deployment configuration first.
-- [ ] Check that the slimmed image still loads every URL. `urls.csv.gz` reaches the image only inside the binary (`//go:embed`), and `loadURLS()` reads it into the `urls` map at startup, so a build stage that misses the file fails `go build`, and a bad file makes the container panic on start. Run these checks after every change to the Dockerfile or `.dockerignore`, and whenever `urls.csv.gz` is replaced:
-
-  1. Work out the expected count. Some source URLs appear more than once (on 2026-10-29: 8,533,368 rows, 8,357,913 distinct sources), and a later row overwrites an earlier one in the map, so the expected count is the number of *distinct* sources, not the line count. The file has no quoted fields, so `cut` is enough:
-
-     ```sh
-     gzip -dc urls.csv.gz | cut -d, -f1 | sort -u | wc -l
-     ```
-
-  2. Start the container and read the startup log. It must contain `loaded N urls` with exactly that N, followed by `server listening`:
-
-     ```sh
-     docker run --rm -d --name resolver-check -p 3000:3000 <image>
-     docker logs -f resolver-check   # wait for "server listening", then Ctrl-C
-     ```
-
-  3. Check that a known URL redirects to its destination. Take it from the last line of the file, since the last occurrence of a source is the one the map keeps:
-
-     ```sh
-     row="$(gzip -dc urls.csv.gz | tail -1)"
-     src="${row%%,*}"; dst="${row#*,}"
-     curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' --get --data-urlencode "url=$src" http://localhost:3000/
-     echo "expected: 301 $dst"
-     ```
-
-  4. Check that an unknown URL gives `404`, and that `GET /status` gives `{"status":"up"}`. Then stop the container: `docker stop resolver-check`.
+Moved to its own plan, `docs/plans/docker-image-slim.md`, on 2026-10-29, together with the check that every URL still loads.
 
 ## Retiring the plan
 
-- [ ] Describe how the image is built (Docker Hub, `hooks/build`, the `SNAPSHOT_EPOCH` argument, pinned base images, how rebuilds are triggered) in the project's README or design doc, so the next person to bump Go or Alpine knows which lines to change.
-- [ ] Move this plan to `docs/archive/` or delete it.
+- [x] Describe how the image is built (Docker Hub, `hooks/build`, the `SNAPSHOT_EPOCH` argument, pinned base images, how rebuilds are triggered) in the project's README or design doc, so the next person to bump Go or Alpine knows which lines to change. *Resolver: moved to `docs/plans/docker-image-slim.md`, so the README describes the slimmed Dockerfile.*
+- [x] Move this plan to `docs/archive/` or delete it. *Resolver: archived 2026-10-29.*
