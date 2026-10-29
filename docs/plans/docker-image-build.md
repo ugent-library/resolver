@@ -1,6 +1,6 @@
 # Plan: rebuild the container image with current Go and CA certificates
 
-**Status:** copied from ingest's archived plan (`ingest/docs/archive/docker-image-build.md`) on 2026-10-26. Part A in progress on branch `docker-image-build`: A0 to A4 and the local test A4b done (2026-10-29, committed as one commit). A5 is skipped; next is A6.
+**Status:** copied from ingest's archived plan (`ingest/docs/archive/docker-image-build.md`) on 2026-10-26. Part A in progress on branch `docker-image-build`: A0 to A4 and the local test A4b done (2026-10-29, committed as one commit). A5 is skipped. A6: merged into `main` as `c66963c`, no release; pushed. Waiting for the automatic production deploy and its checks.
 
 ## Reusing this plan in another project
 
@@ -26,7 +26,7 @@ There is no need to repeat the test in *What we tested*: it shows how Go's `cryp
 | Build and test commands | `go build -o app`, `go vet ./...` (there are no tests and no Makefile) |
 | Running containers | *to look up* (number of Nomad allocations) |
 | Branches | only `main` |
-| Merge commit message | *to decide*; the history has no merge commits yet |
+| Merge commit message | `merge <branch>: <summary>`, lowercase like the rest of the history; first used for this plan's merge (`c66963c`) |
 | Releases | none; no git tags |
 | Docker Hub build rules | one rule: branch `main` → tag `latest` (looked up 2026-10-29). No branch or tag rules otherwise, so a push to any other branch builds nothing. There is no development environment; production runs `latest` |
 
@@ -179,10 +179,10 @@ Resolver has no `dev` branch, no development environment and no Docker Hub rule 
 
 ### A6. Merge into main and release
 
-- [ ] Merge the feature branch into `main` with a merge commit: `git switch main && git pull --ff-only && git merge --no-ff docker-image-build`, with the merge commit message from *This project*. Merge the feature branch, not `dev`, so nothing else from `dev` comes along.
-- [ ] Push `main`.
-- [ ] Decide whether a release is needed. It is if production runs an image built from a tag: a new tag is then the only way to get the new Dockerfile into production, because rebuilding the old tag rebuilds the old Dockerfile. If production runs the image built from `main`, the push is enough. *Resolver: no release needed. Production runs `latest`, which Docker Hub builds from `main`, so the push is enough.*
-- [ ] If a release is needed: create the next patch version as an annotated tag on the merge commit on `main` (resolver has no tags yet, so `v0.1.0` or `v1.0.0`), push the tag, and write a GitHub release that says the image is rebuilt with Go 1.27.3 and the updated CA bundle to move off unsupported Go 1.24 and pick up current Alpine packages, with no other changes and no upgrade steps.
+- [x] Merge the feature branch into `main` with a merge commit: `git switch main && git pull --ff-only && git merge --no-ff docker-image-build`, with the merge commit message from *This project*. Merge the feature branch, not `dev`, so nothing else from `dev` comes along. *Resolver (2026-10-29): merged as `c66963c`, "merge docker-image-build: go 1.27.3, alpine 3.24, current CA bundle".*
+- [x] Push `main`. *Resolver: pushed 2026-10-29. Production deploys automatically once Docker Hub has rebuilt `latest`.*
+- [x] Decide whether a release is needed. It is if production runs an image built from a tag: a new tag is then the only way to get the new Dockerfile into production, because rebuilding the old tag rebuilds the old Dockerfile. If production runs the image built from `main`, the push is enough. *Resolver: no release needed. Production runs `latest`, which Docker Hub builds from `main`, so the push is enough.*
+- [x] *Resolver: not needed; no release and no tag created.* If a release is needed: create the next patch version as an annotated tag on the merge commit on `main` (resolver has no tags yet, so `v0.1.0` or `v1.0.0`), push the tag, and write a GitHub release that says the image is rebuilt with Go 1.27.3 and the updated CA bundle to move off unsupported Go 1.24 and pick up current Alpine packages, with no other changes and no upgrade steps.
 - [ ] Deploy to production and run the same check in every running allocation as in A5.
 - [ ] Delete the feature branch, locally and on GitHub if it was pushed.
 - [ ] Decide the periodic rebuild question and record the answer here.
